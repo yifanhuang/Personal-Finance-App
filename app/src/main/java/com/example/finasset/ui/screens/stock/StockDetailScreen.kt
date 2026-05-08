@@ -25,11 +25,7 @@ import com.example.finasset.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StockDetailScreen(
-    navController: NavHostController,
-    stockId: Long,
-    viewModel: StockViewModel = viewModel()
-) {
+fun StockDetailScreen(navController: NavHostController, stockId: Long, viewModel: StockViewModel = viewModel()) {
     val stock by viewModel.stockDetail.collectAsState()
     val summary by viewModel.stockSummary.collectAsState()
     val transactions by viewModel.stockTransactions.collectAsState()
@@ -65,13 +61,10 @@ fun StockDetailScreen(
             }
         } else {
             val s = stock!!
-            val mv = s.shares * s.currentPrice
-            val cost = s.shares * s.buyPrice
-            val pnl = mv - cost
-            val pnlPct = if (cost > 0) (pnl / cost * 100) else 0.0
+            val mv = s.shares * s.currentPrice; val cost = s.shares * s.buyPrice
+            val pnl = mv - cost; val pnlPct = if (cost > 0) (pnl / cost * 100) else 0.0
 
             Column(Modifier.fillMaxSize().padding(innerPadding).verticalScroll(rememberScrollState())) {
-                // 核心数据卡片
                 Card(
                     Modifier.fillMaxWidth().padding(16.dp),
                     colors = CardDefaults.cardColors(containerColor = Ink.copy(alpha = 0.04f)),
@@ -91,9 +84,7 @@ fun StockDetailScreen(
                                 Text("\u6D6E\u52A8\u4E8F\u76C8", fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
-                        Divider(color = Ink.copy(alpha = 0.08f))
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(16.dp)); Divider(color = Ink.copy(alpha = 0.08f)); Spacer(Modifier.height(12.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             DetailMinimal("\u4E70\u5165\u4EF7", String.format("%.2f", s.buyPrice))
                             DetailMinimal("\u5F53\u524D\u4EF7", String.format("%.2f", s.currentPrice))
@@ -110,29 +101,19 @@ fun StockDetailScreen(
                     }
                 }
 
-                // K-line chart
                 SectionHeaderSerif(title = "K\u7EBF\u56FE")
-                // Period selector
                 LazyRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(listOf("day" to "\u65E5K", "week" to "\u5468K", "month" to "\u6708K")) { (key, label) ->
-                        FilterChip(label = label, selected = klinePeriod == key, onClick = {
-                            s.code.let { viewModel.loadKLine(it, key) }
-                        })
+                        FilterChip(label = label, selected = klinePeriod == key, onClick = { viewModel.loadKLine(s.code, key) })
                     }
                 }
                 if (isLoadingKline) {
-                    Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
+                    Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
                 } else {
-                    KLineChart(
-                        data = ChartData(dates = klineData.dates, closes = klineData.closes, opens = klineData.opens, highs = klineData.highs, lows = klineData.lows, isCandlestick = true),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp),
-                        lineColor = Ink, redUpGreenDown = redUpGreenDown, title = ""
-                    )
+                    EChartsKLine(klineData = klineData, isCandlestick = true, redUpGreenDown = redUpGreenDown, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(320.dp))
                 }
 
                 Spacer(Modifier.height(12.dp))
-
-                // 交易记录
                 SectionHeaderSerif(title = "\u4EA4\u6613\u8BB0\u5F55")
                 if (transactions.isEmpty()) {
                     EmptyState(icon = Icons.Filled.ReceiptLong, title = "\u6682\u65E0\u4EA4\u6613\u8BB0\u5F55")
@@ -165,17 +146,15 @@ fun StockDetailScreen(
         }
 
         if (showDeleteDialog) ConfirmDialog(
-            title = "\u5220\u9664\u6301\u4ED3",
-            message = "\u786E\u5B9A\u5220\u9664\u8BE5\u80A1\u7968\u6301\u4ED3\u53CA\u76F8\u5173\u8BB0\u5F55\uFF1F",
-            confirmText = "\u5220\u9664",
-            onConfirm = { viewModel.deleteStock(stockId); showDeleteDialog = false; navController.popBackStack() },
-            onDismiss = { showDeleteDialog = false })
+            title = "\u5220\u9664\u6301\u4ED3", message = "\u786E\u5B9A\u5220\u9664\u8BE5\u80A1\u7968\u6301\u4ED3\u53CA\u76F8\u5173\u8BB0\u5F55\uFF1F", confirmText = "\u5220\u9664",
+            onConfirm = { viewModel.deleteStock(stockId); showDeleteDialog = false; navController.popBackStack() }, onDismiss = { showDeleteDialog = false }
+        )
         if (showPriceDialog) AlertDialog(
-            onDismissRequest = { showPriceDialog = false },
-            title = { Text("\u66F4\u65B0\u5F53\u524D\u4EF7", fontFamily = FontFamily.Serif) },
+            onDismissRequest = { showPriceDialog = false }, title = { Text("\u66F4\u65B0\u5F53\u524D\u4EF7", fontFamily = FontFamily.Serif) },
             text = { OutlinedTextField(priceInput, { priceInput = it }, label = { Text("\u5F53\u524D\u4EF7\u683C") }, singleLine = true) },
             confirmButton = { TextButton(onClick = { priceInput.toDoubleOrNull()?.let { viewModel.updatePrice(stockId, it) }; showPriceDialog = false; priceInput = "" }) { Text("\u786E\u8BA4") } },
-            dismissButton = { TextButton(onClick = { showPriceDialog = false }) { Text("\u53D6\u6D88") } })
+            dismissButton = { TextButton(onClick = { showPriceDialog = false }) { Text("\u53D6\u6D88") } }
+        )
     }
 }
 
@@ -189,6 +168,6 @@ private fun DetailMinimal(label: String, value: String) {
 
 @Composable
 private fun SectionHeaderSerif(title: String) {
-    Text(title, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-        color = Ink, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), letterSpacing = 0.5.sp)
+    Text(title, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), letterSpacing = 0.5.sp)
 }

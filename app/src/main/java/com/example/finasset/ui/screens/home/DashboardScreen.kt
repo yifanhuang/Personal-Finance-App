@@ -155,14 +155,15 @@ fun DashboardScreen(
                 if (isLoadingCurve) {
                     Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
                 } else if (curvePoints.isNotEmpty()) {
-                    val closes = curvePoints.map { it.totalValue }
-                    val dates = curvePoints.map { it.date }
-                    KLineChart(
-                        data = ChartData(dates = dates, closes = closes, isCandlestick = false),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        lineColor = Ink,
+                    val klineData = com.example.finasset.data.network.QuoteApi.buildCandlesFromCloseSeries(
+                        dates = curvePoints.map { it.date },
+                        closes = curvePoints.map { it.totalValue }
+                    )
+                    EChartsKLine(
+                        klineData = klineData,
+                        isCandlestick = true,
                         redUpGreenDown = redUpGreenDown,
-                        title = ""
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(280.dp)
                     )
                 } else {
                     Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {

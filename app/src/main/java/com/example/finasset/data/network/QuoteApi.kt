@@ -11,7 +11,14 @@ import java.util.*
 
 data class StockQuote(val code: String, val name: String, val currentPrice: Double, val changePercent: Double = 0.0)
 data class FundQuote(val code: String, val name: String, val currentNav: Double, val fundType: String = "")
-data class KLineData(val dates: List<String>, val opens: List<Double>, val closes: List<Double>, val highs: List<Double>, val lows: List<Double>)
+data class KLineData(
+    val dates: List<String>,
+    val opens: List<Double>,
+    val closes: List<Double>,
+    val highs: List<Double>,
+    val lows: List<Double>,
+    val volumes: List<Double> = emptyList()
+)
 data class NavPoint(val date: String, val nav: Double)
 
 private fun httpGet(urlStr: String, referer: String = ""): String {
@@ -25,6 +32,43 @@ private fun httpGet(urlStr: String, referer: String = ""): String {
 }
 
 object QuoteApi {
+
+    fun buildCandlesFromCloseSeries(
+        dates: List<String>,
+        closes: List<Double>,
+        volumeScale: Double = 100000.0
+    ): KLineData {
+        val n = minOf(dates.size, closes.size)
+        if (n <= 0) return KLineData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        val d = dates.take(n)
+        val c = closes.take(n)
+        val opens = ArrayList<Double>(n)
+        val highs = ArrayList<Double>(n)
+        val lows = ArrayList<Double>(n)
+        val vols = ArrayList<Double>(n)
+
+        for (i in 0 until n) {
+            val close = c[i]
+            val open = if (i == 0) close else c[i - 1]
+            val diff = kotlin.math.abs(close - open)
+            val high = maxOf(open, close)
+            val low = minOf(open, close).coerceAtLeast(0.0)
+            val vol = (diff * volumeScale).coerceAtLeast(1.0)
+            opens.add(open)
+            highs.add(high)
+            lows.add(low)
+            vols.add(vol)
+        }
+
+        return KLineData(
+            dates = d,
+            opens = opens,
+            closes = c,
+            highs = highs,
+            lows = lows,
+            volumes = vols
+        )
+    }
 
     suspend fun getStockQuote(rawCode: String): StockQuote? = withContext(Dispatchers.IO) {
         try {
@@ -68,13 +112,11 @@ object QuoteApi {
         // 优先东方财富
         try {
             val text = httpGet("https://api.fund.eastmoney.com/f10/lsjz?fundCode=$code&pageIndex=1&pageSize=$count", "https://fundf10.eastmoney.com/")
-            val result = parseNavHistory(text)
+            val result = parseNavHistoryJson(text)
             if (result.isNotEmpty()) return@withContext result
         } catch (_: Exception) {}
-        // 备用接口
         try {
-            val text = httpGet("https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code=$code&page=1&per=$count", "https://fundf10.eastmoney.com/")
-            val result = parseNavHistory(text)
+            val result = getFundNavHistoryFromEastMoneyHtml(code, count)
             if (result.isNotEmpty()) return@withContext result
         } catch (_: Exception) {}
         // 返回空，让调用方用后备方案
@@ -96,6 +138,7 @@ object QuoteApi {
         val dates = mutableListOf<String>(); val opens = mutableListOf<Double>()
         val closes = mutableListOf<Double>(); val highs = mutableListOf<Double>()
         val lows = mutableListOf<Double>()
+        val vols = mutableListOf<Double>()
         for (i in count - 1 downTo 0) {
             dates.add(sdf.format(cal.time))
             val dayOffset = when (period) { "week" -> 7; "month" -> 30; else -> 1 }
@@ -106,8 +149,9 @@ object QuoteApi {
             opens.add(open); closes.add(close)
             highs.add(maxOf(open, close) + rng.nextDouble() * 1)
             lows.add(minOf(open, close) - rng.nextDouble() * 1)
+            vols.add(800.0 + rng.nextDouble() * 2200.0)
         }
-        return KLineData(dates.reversed(), opens.reversed(), closes.reversed(), highs.reversed(), lows.reversed())
+        return KLineData(dates.reversed(), opens.reversed(), closes.reversed(), highs.reversed(), lows.reversed(), vols.reversed())
     }
 
     private fun parseStockCode(raw: String): Pair<Int, String> {
@@ -151,33 +195,48 @@ object QuoteApi {
 
     private fun parseSinaKLine(text: String): KLineData {
         val d = mutableListOf<String>(); val o = mutableListOf<Double>(); val c = mutableListOf<Double>()
-        val h = mutableListOf<Double>(); val l = mutableListOf<Double>()
+        val h = mutableListOf<Double>(); val l = mutableListOf<Double>(); val v = mutableListOf<Double>()
         try {
             for (m in """\{[^}]*\}""".toRegex().findAll(text.replace(" ", ""))) {
                 val day = extractStr(m.value, "day"); if (day.isEmpty()) continue
                 d.add(day); o.add(extractNum(m.value, "open")); c.add(extractNum(m.value, "close"))
                 h.add(extractNum(m.value, "high")); l.add(extractNum(m.value, "low"))
+                v.add(extractNum(m.value, "volume"))
             }
         } catch (_: Exception) {}
-        return KLineData(d, o, c, h, l)
+        return KLineData(d, o, c, h, l, v)
     }
 
     private fun parseEastKLine(json: String): KLineData {
         val d = mutableListOf<String>(); val o = mutableListOf<Double>(); val c = mutableListOf<Double>()
-        val h = mutableListOf<Double>(); val l = mutableListOf<Double>()
+        val h = mutableListOf<Double>(); val l = mutableListOf<Double>(); val v = mutableListOf<Double>()
         try {
-            val ds = json.indexOf("\"klines\":"); if (ds < 0) return KLineData(d, o, c, h, l)
+            val ds = json.indexOf("\"klines\":"); if (ds < 0) return KLineData(d, o, c, h, l, v)
             val b1 = json.indexOf("[", ds); val b2 = json.indexOf("]", b1)
-            if (b1 < 0 || b2 < 0) return KLineData(d, o, c, h, l)
+            if (b1 < 0 || b2 < 0) return KLineData(d, o, c, h, l, v)
             for (item in """\"([^\"]+)\"""".toRegex().findAll(json.substring(b1 + 1, b2))) {
                 val p = item.groupValues[1].split(",")
-                if (p.size >= 5) { d.add(p[0]); o.add((p[1].toDoubleOrNull() ?: 0.0)); c.add((p[2].toDoubleOrNull() ?: 0.0)); h.add((p[3].toDoubleOrNull() ?: 0.0)); l.add((p[4].toDoubleOrNull() ?: 0.0)) }
+                if (p.size >= 6) {
+                    d.add(p[0])
+                    o.add((p[1].toDoubleOrNull() ?: 0.0))
+                    c.add((p[2].toDoubleOrNull() ?: 0.0))
+                    h.add((p[3].toDoubleOrNull() ?: 0.0))
+                    l.add((p[4].toDoubleOrNull() ?: 0.0))
+                    v.add((p[5].toDoubleOrNull() ?: 0.0))
+                } else if (p.size >= 5) {
+                    d.add(p[0])
+                    o.add((p[1].toDoubleOrNull() ?: 0.0))
+                    c.add((p[2].toDoubleOrNull() ?: 0.0))
+                    h.add((p[3].toDoubleOrNull() ?: 0.0))
+                    l.add((p[4].toDoubleOrNull() ?: 0.0))
+                    v.add(0.0)
+                }
             }
         } catch (_: Exception) {}
-        return KLineData(d, o, c, h, l)
+        return KLineData(d, o, c, h, l, v)
     }
 
-    private fun parseNavHistory(json: String): List<NavPoint> {
+    private fun parseNavHistoryJson(json: String): List<NavPoint> {
         val result = mutableListOf<NavPoint>()
         try {
             val ds = json.indexOf("\"LSJZList\":"); if (ds < 0) return result
@@ -190,6 +249,42 @@ object QuoteApi {
             }
             result.reverse()
         } catch (_: Exception) {}
+        return result
+    }
+
+    private fun getFundNavHistoryFromEastMoneyHtml(code: String, count: Int): List<NavPoint> {
+        val per = 49
+        val maxPage = ((count + per - 1) / per).coerceAtLeast(1).coerceAtMost(50)
+        val all = mutableListOf<NavPoint>()
+        val seen = HashSet<String>()
+        for (page in 1..maxPage) {
+            val text = httpGet(
+                "https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code=$code&page=$page&per=$per",
+                "https://fundf10.eastmoney.com/"
+            )
+            val pageList = parseNavHistoryHtml(text)
+            if (pageList.isEmpty()) break
+            for (p in pageList) {
+                if (p.nav <= 0) continue
+                if (seen.add(p.date)) all.add(p)
+            }
+            if (all.size >= count) break
+        }
+        all.sortBy { it.date }
+        return if (all.size > count) all.takeLast(count) else all
+    }
+
+    private fun parseNavHistoryHtml(text: String): List<NavPoint> {
+        val result = mutableListOf<NavPoint>()
+        val rowRegex = Regex(
+            """<tr[^>]*>\s*<td[^>]*>(\d{4}-\d{2}-\d{2})</td>\s*<td[^>]*>([\d.]+)</td>""",
+            setOf(RegexOption.IGNORE_CASE)
+        )
+        for (m in rowRegex.findAll(text)) {
+            val date = m.groupValues.getOrNull(1).orEmpty()
+            val nav = m.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0
+            if (date.isNotEmpty() && nav > 0) result.add(NavPoint(date, nav))
+        }
         return result
     }
 

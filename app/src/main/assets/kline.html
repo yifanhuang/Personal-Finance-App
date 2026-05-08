@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%}
+body{background:transparent;overflow:hidden}
+#chart{width:100vw;height:100vh}
+#err{position:fixed;left:8px;right:8px;bottom:8px;max-height:40%;overflow:auto;white-space:pre-wrap;font:12px/1.4 monospace;color:#b00020;background:rgba(255,255,255,0.92);border:1px solid rgba(0,0,0,0.12);border-radius:6px;padding:8px;display:none}
+</style>
+</head>
+<body>
+<div id="chart"></div>
+<div id="err"></div>
+<!-- Inline ECharts would be too large, load from assets -->
+<script>
+// 标记 ECharts 是否就绪
+window._echartsReady = false;
+window._pendingData = null;
+window._chart = null;
+window._lastError = "";
+window._logSeq = 0;
+window._initAttempt = 0;
+
+function showError(msg) {
+  window._lastError = msg || "";
+  var el = document.getElementById('err');
+  if (!el) return;
+  if (!window._lastError) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.style.display = 'block';
+  el.textContent = window._lastError;
+}
+
+function log(level, msg, extra) {
+  try {
+    window._logSeq = (window._logSeq || 0) + 1;
+    var ts = new Date().toISOString();
+    var base = "[kline#" + window._logSeq + " " + ts + "] " + msg;
+    if (extra !== undefined) base += " " + (typeof extra === 'string' ? extra : JSON.stringify(extra));
+    if (level === 'error') console.error(base);
+    else if (level === 'warn') console.warn(base);
+    else console.log(base);
+  } catch(e) {}
+}
+
+function demoCfg(kind) {
+  var d = ['2025-01-01','2025-01-02','2025-01-03','2025-01-04','2025-01-05'];
+  if (kind === 'line') {
+    return { isCandlestick:false, redUp:true, dates:d, opens:[], closes:[100,112,108,120,115], highs:[], lows:[], volumes:[] };
+  }
+  return {
+    isCandlestick:true, redUp:true,
+    dates:d,
+    opens:[100,105,112,108,120],
+    closes:[105,112,108,120,115],
+    lows:[98,103,106,107,112],
+    highs:[107,115,114,122,123],
+    volumes:[1200,1350,900,2100,1700]
+  };
+}
+
+function getParam(name) {
+  try {
+    var u = new URL(window.location.href);
+    return u.searchParams.get(name) || '';
+  } catch(e) { return ''; }
+}
+
+function initECharts() {
+  try {
+    window._chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
+    window._echartsReady = true;
+    log('info', 'initECharts ok', { w: window._chart.getWidth(), h: window._chart.getHeight(), renderer: 'canvas' });
+    if (window._pendingData) {
+      log('info', 'render pendingData');
+      render(window._pendingData);
+      window._pendingData = null;
+    }
+    window._chart.resize();
+    if (!window._pendingData) {
+      var demo = getParam('demo');
+      if (demo) render(demoCfg(demo));
+    }
+    showError('');
+  } catch(e) { window._echartsReady = false; showError(String(e && (e.stack || e.message) || e)); }
+}
+
+function scheduleInit() {
+  try {
+    var el = document.getElementById('chart');
+    var vh = window.innerHeight || (document.documentElement && document.documentElement.clientHeight) || 0;
+    if (el && vh > 0 && el.clientHeight === 0) el.style.height = vh + 'px';
+    var w = el ? el.clientWidth : 0;
+    var h = el ? el.clientHeight : 0;
+    window._initAttempt = (window._initAttempt || 0) + 1;
+    if (window._chart) {
+      if (w > 0 && h > 0) window._chart.resize();
+      return;
+    }
+    if (!window.echarts) {
+      setTimeout(scheduleInit, 50);
+      return;
+    }
+    if (w <= 0 || h <= 0) {
+      if (window._initAttempt % 20 === 1) log('warn', 'chart size not ready', { w: w, h: h, attempt: window._initAttempt });
+      setTimeout(scheduleInit, 50);
+      return;
+    }
+    initECharts();
+  } catch(e) { showError(String(e && (e.stack || e.message) || e)); }
+}
+
+function forceResize() {
+  try {
+    if (window._chart) window._chart.resize();
+  } catch(e) {}
+}
+
+function render(cfg) {
+  var c = window._chart;
+  if (!c) return;
+  var dates = cfg.dates || [];
+  var closes = cfg.closes || [];
+  var opens = cfg.opens || [];
+  var highs = cfg.highs || [];
+  var lows = cfg.lows || [];
+  var volumes = cfg.volumes || [];
+  var isCandle = cfg.isCandlestick === true;
+  var redUp = cfg.redUp !== false;
+  var n = dates.length;
+  if (n === 0) { c.clear(); return; }
+  log('info', 'render', { isCandle: isCandle, redUp: redUp, n: n, w: c.getWidth(), h: c.getHeight() });
+
+  var upColor = redUp ? '#C0392B' : '#27AE60';
+  var downColor = redUp ? '#27AE60' : '#C0392B';
+  var grids = [], xAxes = [], yAxes = [], series = [];
+
+  if (isCandle) {
+    var cd = [], vol = [];
+    for (var i=0;i<n;i++) {
+      cd.push([opens[i]||closes[i], closes[i], lows[i]||closes[i], highs[i]||closes[i]]);
+      var vv = volumes[i];
+      if (typeof vv !== 'number' || !isFinite(vv) || vv <= 0) vv = Math.abs(closes[i]||0) * 1200 + 800;
+      vol.push(vv);
+    }
+
+    grids.push({ left: 52, right: 12, top: '10%', height: '52%' });
+    grids.push({ left: 52, right: 12, top: '70%', height: '16%' });
+
+    xAxes.push({
+      type:'category',
+      data:dates,
+      boundaryGap:true,
+      axisLine:{lineStyle:{color:'#999'}},
+      axisTick:{show:false},
+      axisLabel:{show:false},
+      splitLine:{show:false}
+    });
+    xAxes.push({
+      type:'category',
+      gridIndex:1,
+      data:dates,
+      boundaryGap:true,
+      axisLine:{show:false},
+      axisTick:{show:false},
+      axisLabel:{color:'#777',fontSize:10},
+      splitLine:{show:false}
+    });
+
+    yAxes.push({
+      scale:true,
+      axisLine:{show:false},
+      axisTick:{show:false},
+      axisLabel:{color:'#777',fontSize:10},
+      splitLine:{lineStyle:{color:'rgba(0,0,0,0.08)'}},
+      position:'left'
+    });
+    yAxes.push({
+      scale:true,
+      gridIndex:1,
+      axisLine:{show:false},
+      axisTick:{show:false},
+      axisLabel:{show:false},
+      splitLine:{show:false}
+    });
+
+    series.push({
+      name:'K',
+      type:'candlestick',
+      data:cd,
+      itemStyle:{color:upColor,color0:downColor,borderColor:upColor,borderColor0:downColor}
+    });
+    series.push({
+      name:'VOL',
+      type:'bar',
+      xAxisIndex:1,
+      yAxisIndex:1,
+      data: vol.map(function(vv, i){
+        var o = opens[i]||closes[i];
+        var cc = closes[i];
+        return { value: vv, itemStyle: { color: (cc>=o) ? upColor : downColor, opacity: 0.75 } };
+      }),
+      barWidth:'60%'
+    });
+  } else {
+    grids.push({ left: 52, right: 12, top: '10%', height: '70%' });
+    xAxes.push({
+      type:'category',
+      data:dates,
+      boundaryGap:false,
+      axisLine:{lineStyle:{color:'#999'}},
+      axisTick:{show:false},
+      axisLabel:{color:'#777',fontSize:10},
+      splitLine:{show:false}
+    });
+    yAxes.push({
+      scale:true,
+      axisLine:{show:false},
+      axisTick:{show:false},
+      axisLabel:{color:'#777',fontSize:10},
+      splitLine:{lineStyle:{color:'rgba(0,0,0,0.08)'}},
+      position:'left'
+    });
+    series.push({
+      type:'line',
+      data:closes,
+      smooth:true,
+      symbol:'none',
+      lineStyle:{color:'#2C3E50',width:2},
+      areaStyle:{color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(44,62,80,0.15)'},{offset:1,color:'rgba(44,62,80,0.01)'}])}
+    });
+  }
+  if (c.getHeight && c.getHeight() === 0) c.resize();
+  c.setOption({
+    animation:false,
+    tooltip:{trigger:'axis'},
+    grid:grids,
+    xAxis:xAxes,
+    yAxis:yAxes,
+    series:series
+  }, true);
+  c.resize();
+  showError('');
+}
+
+function updateChart(json) {
+  try {
+    var cfg = JSON.parse(json);
+    log('info', 'updateChart parsed', { isCandle: cfg && cfg.isCandlestick, n: (cfg && cfg.dates && cfg.dates.length) || 0 });
+    if (window._echartsReady) render(cfg);
+    else window._pendingData = cfg;
+  } catch(e) { showError(String(e && (e.stack || e.message) || e)); }
+}
+
+// ECharts loaded → init
+function onEchartsLoaded() { scheduleInit(); }
+window.addEventListener('resize', function() { if (window._chart) window._chart.resize(); });
+window.addEventListener('error', function(e){ log('error', 'window.error', { message: e && e.message, filename: e && e.filename, lineno: e && e.lineno, colno: e && e.colno }); });
+window.addEventListener('unhandledrejection', function(e){ log('error', 'unhandledrejection', { reason: e && e.reason }); });
+document.addEventListener('DOMContentLoaded', scheduleInit);
+</script>
+<script src="echarts.min.js" onload="onEchartsLoaded()"></script>
+</body>
+</html>

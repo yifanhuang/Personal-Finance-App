@@ -114,12 +114,22 @@ fun FundDetailScreen(
                 if (isLoadingNav) {
                     Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
                 } else if (navHistory.isNotEmpty()) {
-                    val closes = navHistory.map { it.nav }
-                    val dates = navHistory.map { it.date }
-                    KLineChart(
-                        data = ChartData(dates = dates, closes = closes, isCandlestick = false),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        lineColor = Ink, redUpGreenDown = redUpGreenDown, title = ""
+                    val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                    val baseDates = navHistory.map { it.date }.toMutableList()
+                    val baseCloses = navHistory.map { it.nav }.toMutableList()
+                    if (baseDates.isNotEmpty()) {
+                        if (baseDates.last() == today) baseCloses[baseCloses.lastIndex] = f.currentNav
+                        else { baseDates.add(today); baseCloses.add(f.currentNav) }
+                    }
+                    val klineData = com.example.finasset.data.network.QuoteApi.buildCandlesFromCloseSeries(
+                        dates = baseDates,
+                        closes = baseCloses
+                    )
+                    EChartsKLine(
+                        klineData = klineData,
+                        isCandlestick = true,
+                        redUpGreenDown = redUpGreenDown,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(280.dp)
                     )
                 } else {
                     Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
