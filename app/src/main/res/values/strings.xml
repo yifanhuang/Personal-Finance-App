@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">资产管家</string>
+    <string name="tab_home">总览</string>
+    <string name="tab_stock">股票</string>
+    <string name="tab_fund">基金</string>
+    <string name="tab_transaction">记账</string>
+    <string name="tab_report">报表</string>
+    <string name="tab_market">行情</string>
+    <string name="tab_settings">设置</string>
+    <string name="total_assets">总资产</string>
+    <string name="daily_pnl">当日盈亏</string>
+    <string name="total_return">累计收益</string>
+    <string name="add_position">新增持仓</string>
+    <string name="add_record">新增记录</string>
+    <string name="refresh_quote">刷新行情</string>
+    <string name="search">搜索</string>
+    <string name="stock_module">股票资产</string>
+    <string name="fund_module">基金资产</string>
+    <string name="import_file">批量导入</string>
+    <string name="export_data">导出数据</string>
+    <string name="custom_tag">自定义标签</string>
+    <string name="price_alert">价格提醒</string>
+    <string name="deep_theme">深色模式</string>
+    <string name="settings">设置</string>
+    <string name="backup">云端备份</string>
+    <string name="restore">恢复数据</string>
+</resources>
