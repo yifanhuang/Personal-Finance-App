@@ -110,7 +110,13 @@ fun StockDetailScreen(navController: NavHostController, stockId: Long, viewModel
                 if (isLoadingKline) {
                     Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) }
                 } else {
-                    EChartsKLine(klineData = klineData, isCandlestick = true, redUpGreenDown = redUpGreenDown, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(320.dp))
+                    EChartsKLine(
+                        klineData = klineData,
+                        isCandlestick = true,
+                        redUpGreenDown = redUpGreenDown,
+                        period = klinePeriod,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(320.dp)
+                    )
                 }
 
                 Spacer(Modifier.height(12.dp))

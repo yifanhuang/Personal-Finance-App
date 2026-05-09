@@ -163,6 +163,7 @@ fun DashboardScreen(
                         klineData = klineData,
                         isCandlestick = true,
                         redUpGreenDown = redUpGreenDown,
+                        period = curvePeriod,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(280.dp)
                     )
                 } else {

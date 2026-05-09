@@ -118,6 +118,14 @@ function forceResize() {
   } catch(e) {}
 }
 
+function formatDateLabel(period, v) {
+  var s = (v == null) ? '' : String(v);
+  if (s.length >= 10) s = s.substring(0, 10);
+  if (period === 'month') return s.substring(0, 7);
+  if (period === 'week') return s.substring(5, 10);
+  return s.substring(5, 10);
+}
+
 function render(cfg) {
   var c = window._chart;
   if (!c) return;
@@ -129,6 +137,8 @@ function render(cfg) {
   var volumes = cfg.volumes || [];
   var isCandle = cfg.isCandlestick === true;
   var redUp = cfg.redUp !== false;
+  var period = cfg.period || 'day';
+  var windowSize = cfg.windowSize || 30;
   var n = dates.length;
   if (n === 0) { c.clear(); return; }
   log('info', 'render', { isCandle: isCandle, redUp: redUp, n: n, w: c.getWidth(), h: c.getHeight() });
@@ -136,6 +146,9 @@ function render(cfg) {
   var upColor = redUp ? '#C0392B' : '#27AE60';
   var downColor = redUp ? '#27AE60' : '#C0392B';
   var grids = [], xAxes = [], yAxes = [], series = [];
+  var xAxisIndex = isCandle ? [0, 1] : 0;
+  var startValue = Math.max(n - windowSize, 0);
+  var endValue = Math.max(n - 1, 0);
 
   if (isCandle) {
     var cd = [], vol = [];
@@ -165,7 +178,12 @@ function render(cfg) {
       boundaryGap:true,
       axisLine:{show:false},
       axisTick:{show:false},
-      axisLabel:{color:'#777',fontSize:10},
+      axisLabel:{
+        color:'#777',
+        fontSize:10,
+        interval:'auto',
+        formatter:function(v){ return formatDateLabel(period, v); }
+      },
       splitLine:{show:false}
     });
 
@@ -212,7 +230,12 @@ function render(cfg) {
       boundaryGap:false,
       axisLine:{lineStyle:{color:'#999'}},
       axisTick:{show:false},
-      axisLabel:{color:'#777',fontSize:10},
+      axisLabel:{
+        color:'#777',
+        fontSize:10,
+        interval:'auto',
+        formatter:function(v){ return formatDateLabel(period, v); }
+      },
       splitLine:{show:false}
     });
     yAxes.push({
@@ -236,6 +259,29 @@ function render(cfg) {
   c.setOption({
     animation:false,
     tooltip:{trigger:'axis'},
+    dataZoom:[
+      {
+        type:'inside',
+        xAxisIndex:xAxisIndex,
+        startValue:startValue,
+        endValue:endValue
+      },
+      {
+        type:'slider',
+        xAxisIndex:xAxisIndex,
+        left:52,
+        right:12,
+        height:18,
+        bottom:0,
+        startValue:startValue,
+        endValue:endValue,
+        brushSelect:false,
+        showDetail:false,
+        fillerColor:'rgba(44,62,80,0.10)',
+        borderColor:'rgba(0,0,0,0.12)',
+        handleStyle:{color:'rgba(44,62,80,0.35)'}
+      }
+    ],
     grid:grids,
     xAxis:xAxes,
     yAxis:yAxes,
@@ -248,7 +294,7 @@ function render(cfg) {
 function updateChart(json) {
   try {
     var cfg = JSON.parse(json);
-    log('info', 'updateChart parsed', { isCandle: cfg && cfg.isCandlestick, n: (cfg && cfg.dates && cfg.dates.length) || 0 });
+    log('info', 'updateChart parsed', { isCandle: cfg && cfg.isCandlestick, period: cfg && cfg.period, n: (cfg && cfg.dates && cfg.dates.length) || 0 });
     if (window._echartsReady) render(cfg);
     else window._pendingData = cfg;
   } catch(e) { showError(String(e && (e.stack || e.message) || e)); }

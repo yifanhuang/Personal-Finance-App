@@ -26,10 +26,11 @@ fun EChartsKLine(
     klineData: KLineData,
     isCandlestick: Boolean = true,
     redUpGreenDown: Boolean = true,
+    period: String = "day",
     modifier: Modifier = Modifier
 ) {
-    val json = remember(klineData, isCandlestick, redUpGreenDown) {
-        buildChartJson(klineData, isCandlestick, redUpGreenDown)
+    val json = remember(klineData, isCandlestick, redUpGreenDown, period) {
+        buildChartJson(klineData, isCandlestick, redUpGreenDown, period)
     }
     val jsonJs = remember(json) { JSONObject.quote(json.toString()) }
     val latestJsonJs by rememberUpdatedState(jsonJs)
@@ -113,7 +114,7 @@ private fun pollForReady(view: WebView?, jsonJs: String, attempt: Int = 0) {
 
 private const val TAG = "EChartsKLine"
 
-private fun buildChartJson(data: KLineData, isCandlestick: Boolean, redUp: Boolean): JSONObject {
+private fun buildChartJson(data: KLineData, isCandlestick: Boolean, redUp: Boolean, period: String): JSONObject {
     val n = minOf(
         data.dates.size,
         data.closes.size,
@@ -124,6 +125,7 @@ private fun buildChartJson(data: KLineData, isCandlestick: Boolean, redUp: Boole
     val obj = JSONObject()
     obj.put("isCandlestick", isCandlestick)
     obj.put("redUp", redUp)
+    obj.put("period", period)
     obj.put("dates", JSONArray(data.dates.take(n)))
     obj.put("opens", JSONArray((if (data.opens.isEmpty()) data.closes else data.opens).take(n)))
     obj.put("closes", JSONArray(data.closes.take(n)))

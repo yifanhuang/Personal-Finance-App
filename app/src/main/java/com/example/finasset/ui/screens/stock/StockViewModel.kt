@@ -53,7 +53,7 @@ class StockViewModel(application: Application) : AndroidViewModel(application) {
         _klinePeriod.value = period
         viewModelScope.launch {
             _isLoadingKline.value = true
-            val count = when (period) { "day" -> 250; "week" -> 52; "month" -> 12; else -> 250 }
+            val count = when (period) { "day" -> 365; "week" -> 120; "month" -> 60; else -> 365 }
             _klineData.value = QuoteApi.getStockKLine(code, period, count)
             _isLoadingKline.value = false
         }

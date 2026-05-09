@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.finasset.FinAssetApp
 import com.example.finasset.data.model.AssetOverview
+import com.example.finasset.data.network.NavPoint
 import com.example.finasset.data.network.QuoteApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -64,7 +65,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
         for (stock in stocks) {
             try {
-                val count = when (period) { "week" -> 52; "month" -> 24; else -> 250 }
+                val count = when (period) { "week" -> 120; "month" -> 60; else -> 365 }
                 val kline = QuoteApi.getStockKLine(stock.code, period, count)
                 if (kline.dates.isNotEmpty()) {
                     for (i in kline.dates.indices) {
@@ -79,8 +80,14 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
         for (fund in funds) {
             try {
-                val navHistory = QuoteApi.getFundNavHistory(fund.code, 365)
-                val usable = navHistory.filter { it.nav > 0 }
+                val rawCount = when (period) { "week" -> 1000; "month" -> 1800; else -> 365 }
+                val navHistory = QuoteApi.getFundNavHistory(fund.code, rawCount)
+                val usableRaw = navHistory.filter { it.nav > 0 }
+                val usable = when (period) {
+                    "week" -> compressNavByWeek(usableRaw)
+                    "month" -> compressNavByMonth(usableRaw)
+                    else -> usableRaw
+                }
                 if (usable.isNotEmpty()) {
                     for (np in usable) { dateMap[np.date] = (dateMap[np.date] ?: 0.0) + fund.shares * np.nav }
                 } else {
@@ -89,15 +96,66 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             } catch (_: Exception) { fillSyntheticFund(dateMap, fund.buyNav, fund.currentNav, fund.shares, period, sdf) }
         }
 
-        val count = when (period) { "week" -> 52; "month" -> 24; else -> 90 }
+        val count = when (period) { "week" -> 120; "month" -> 60; else -> 365 }
         val sorted = dateMap.entries.sortedBy { it.key }.takeLast(count)
         _curvePoints.value = sorted.map { CurvePoint(it.key, it.value) }
         _isLoadingCurve.value = false
     }
 
+    private fun compressNavByWeek(points: List<NavPoint>): List<NavPoint> {
+        if (points.isEmpty()) return emptyList()
+        val sorted = points.sortedBy { it.date }
+        val out = mutableListOf<NavPoint>()
+        var lastKey = ""
+        var lastPoint: NavPoint? = null
+        for (p in sorted) {
+            val key = weekKey(p.date)
+            if (key != lastKey) {
+                lastPoint?.let { out.add(it) }
+                lastKey = key
+            }
+            lastPoint = p
+        }
+        lastPoint?.let { out.add(it) }
+        return out
+    }
+
+    private fun compressNavByMonth(points: List<NavPoint>): List<NavPoint> {
+        if (points.isEmpty()) return emptyList()
+        val sorted = points.sortedBy { it.date }
+        val out = mutableListOf<NavPoint>()
+        var lastKey = ""
+        var lastPoint: NavPoint? = null
+        for (p in sorted) {
+            val key = monthKey(p.date)
+            if (key != lastKey) {
+                lastPoint?.let { out.add(it) }
+                lastKey = key
+            }
+            lastPoint = p
+        }
+        lastPoint?.let { out.add(it) }
+        return out
+    }
+
+    private fun weekKey(date: String): String {
+        return try {
+            val cal = Calendar.getInstance()
+            val d = sdfParse(date) ?: return date
+            cal.time = d
+            val y = cal.get(Calendar.YEAR)
+            val w = cal.get(Calendar.WEEK_OF_YEAR)
+            "$y-$w"
+        } catch (_: Exception) { date }
+    }
+
+    private fun monthKey(date: String): String = if (date.length >= 7) date.substring(0, 7) else date
+
+    private fun sdfParse(date: String): Date? = try { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(date) } catch (_: Exception) { null }
+
     private fun fillSyntheticStock(map: LinkedHashMap<String, Double>, buy: Double, cur: Double, shares: Double, period: String, sdf: SimpleDateFormat) {
         val cal = Calendar.getInstance()
-        val days = when (period) { "week" -> 52; "month" -> 24; else -> 90 }
+        val days = when (period) { "week" -> 120; "month" -> 60; else -> 365 }
         for (i in days - 1 downTo 0) {
             val t = i.toDouble() / (days - 1).coerceAtLeast(1)
             val price = buy + (cur - buy) * t + (Math.random() - 0.5) * (cur - buy).coerceAtLeast(0.1) * 0.3
@@ -108,7 +166,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun fillSyntheticFund(map: LinkedHashMap<String, Double>, buyNav: Double, curNav: Double, shares: Double, period: String, sdf: SimpleDateFormat) {
         val cal = Calendar.getInstance()
-        val days = when (period) { "week" -> 52; "month" -> 24; else -> 90 }
+        val days = when (period) { "week" -> 120; "month" -> 60; else -> 365 }
         for (i in days - 1 downTo 0) {
             val t = i.toDouble() / (days - 1).coerceAtLeast(1)
             val nav = buyNav + (curNav - buyNav) * t + (Math.random() - 0.5) * (curNav - buyNav).coerceAtLeast(0.01) * 0.2

@@ -129,6 +129,7 @@ fun FundDetailScreen(
                         klineData = klineData,
                         isCandlestick = true,
                         redUpGreenDown = redUpGreenDown,
+                        period = "day",
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(280.dp)
                     )
                 } else {
